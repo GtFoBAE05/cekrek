@@ -1,103 +1,221 @@
-import Image from "next/image";
+"use client"
 
-export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+import Image, {StaticImageData} from "next/image";
+import FourPoseImage from "../../public/four-pose.png";
+import {useCallback, useRef, useState} from "react";
+import Webcam from "react-webcam";
+import Button from "@/components/Button";
+import {Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,} from "@/components/ui/select"
+import applyFilterToBase64 from "@/utils/ImageUtil";
+import Link from "next/link";
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+interface PhotoLayout {
+    name: string
+    image: StaticImageData
+    totalPhoto: number
+}
+
+const photoLayouts: PhotoLayout[] = [
+    {
+        name: "4 Pose",
+        image: FourPoseImage,
+        totalPhoto: 4
+    },
+    {
+        name: "3 Pose",
+        image: FourPoseImage,
+        totalPhoto: 3
+    },
+    {
+        name: "2 Pose",
+        image: FourPoseImage,
+        totalPhoto: 2
+    },
+]
+
+interface PhotoFilter {
+    name: string
+    filter: string
+}
+
+const photoFilters: PhotoFilter[] = [
+    {
+        name: "Normal",
+        filter: "",
+    },
+    {
+        name: "B&W",
+        filter: "grayscale(100%)",
+    },
+    {
+        name: "Vintage",
+        filter: "sepia(50%) contrast(90%) brightness(90%)",
+    },
+    {
+        name: "Blur",
+        filter: "blur(4px)",
+    },
+    {
+        name: "Polaroid",
+        filter: "contrast(120%) saturate(150%)",
+    },
+    {
+        name: "Warm",
+        filter: "sepia(20%) contrast(100%) saturate(150%)",
+    }
+]
+
+export default function Page() {
+    const [selectedLayout, setSelectedLayout] = useState<PhotoLayout>(photoLayouts[2]);
+    const handleLayoutChange = (value: string) => {
+        const photoLayoutResult: PhotoLayout = photoLayouts.find(photoLayouts => photoLayouts.name === value) || photoLayouts[0];
+        setSelectedLayout(photoLayoutResult)
+    }
+
+    const [selectedFilter, setSelectedFilter] = useState(photoFilters[0])
+    const handleFilterChange = (index: number) => {
+        setSelectedFilter(photoFilters[index])
+    }
+
+    const [selectedDelay, setSelectedDelay] = useState<string>("3")
+    const handleDelayChange = (value: string) => {
+        setSelectedDelay(value)
+        setCountdown(parseInt(value))
+    }
+
+    const [isCapturing, setIsCapturing] = useState(false)
+    const [countdown, setCountdown] = useState(3)
+    const [savedPhoto, setSavedPhoto] = useState<string[]>([])
+
+    const handleToPreviewPage = () => {
+        sessionStorage.setItem("photos", JSON.stringify(savedPhoto));
+    }
+
+    const webcamRef = useRef(null);
+    const handleCaptureImage = useCallback(() => {
+        setIsCapturing(true);
+
+        let countdown = parseInt(selectedDelay);
+        setCountdown(countdown);
+
+        const intervalId = setInterval(async () => {
+            if (countdown > 0) {
+                countdown--;
+                setCountdown(countdown);
+            } else {
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                const plainImage = webcamRef.current?.getScreenshot();
+                if (!plainImage) return;
+                const imageSrc = await applyFilterToBase64(plainImage, selectedFilter.filter);
+
+                setSavedPhoto(prevSaved => {
+                    const newSavedPhotos = [...prevSaved, imageSrc];
+
+                    if (newSavedPhotos.length === selectedLayout.totalPhoto) {
+                        setIsCapturing(false);
+                        clearInterval(intervalId);
+                    }
+
+                    return newSavedPhotos;
+                });
+
+                countdown = parseInt(selectedDelay);
+                setCountdown(countdown);
+            }
+        }, 1000);
+
+        return () => clearInterval(intervalId);
+
+    }, [selectedDelay, selectedLayout, selectedFilter, webcamRef]);
+
+    return (
+        <div className={"w-full h-dvh"}>
+            <main className={"flex flex-col gap-4 items-center justify-center w-full h-full"}>
+                <div className={"grid grid-cols-2 gap-4"}>
+                    <Select defaultValue={selectedLayout.name} onValueChange={handleLayoutChange}
+                            disabled={savedPhoto.length > 0 || isCapturing}>
+                        <SelectTrigger>
+                            <SelectValue/>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectGroup>
+                                {photoLayouts.map(value => (
+                                    <SelectItem key={value.name} value={value.name}>{value.name}</SelectItem>
+                                ))}
+                            </SelectGroup>
+                        </SelectContent>
+                    </Select>
+
+                    <Select defaultValue={selectedDelay} onValueChange={handleDelayChange}
+                            disabled={savedPhoto.length > 0 || isCapturing}>
+                        <SelectTrigger>
+                            <SelectValue/>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectGroup>
+                                <SelectItem value={"3"}>3s Delay</SelectItem>
+                                <SelectItem value={"5"}>5s Delay</SelectItem>
+                                <SelectItem value={"10"}>10s Delay</SelectItem>
+                            </SelectGroup>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className={"flex flex-row gap-4 items-center"}>
+                    <div className="relative">
+                        <Webcam
+                            audio={false}
+                            ref={webcamRef}
+                            screenshotFormat="image/jpeg"
+                            width={640}
+                            height={480}
+                            className="rounded-2xl"
+                            style={{filter: selectedFilter.filter}}
+                        />
+                        <h1
+                            className={`absolute inset-0 flex items-center justify-center text-6xl font-bold text-white ${!isCapturing ? "hidden" : ""}`}>
+                            {countdown}
+                        </h1>
+                    </div>
+                    <div className={"flex flex-col gap-4"}>
+                        {savedPhoto.map((value, index) => (
+                            <Image
+                                key={index}
+                                src={decodeURIComponent(value)}
+                                alt={value}
+                                width={120}
+                                height={80}
+                                className={"rounded-2xl w-[120px] h-[80px] object-cover"}
+                            />
+                        ))}
+                    </div>
+                </div>
+
+                {
+                    (savedPhoto.length == selectedLayout.totalPhoto) && !isCapturing ?
+                        <Link href={"/preview"}>
+                            <Button variant={"primary"} onClick={handleToPreviewPage}>Next</Button>
+                        </Link>
+                        :
+                        <Button variant={"primary"} onClick={handleCaptureImage}
+                                disabled={isCapturing || savedPhoto.length != 0}>📷 {isCapturing ? "Say Cekrek..." : "Start Cekrek"}</Button>
+                }
+
+                <h2>Choose a filter!</h2>
+                <div className={"flex flex-row gap-4 "}>
+                    {photoFilters.map((value, index) => (
+                        <Button
+                            key={index}
+                            onClick={() => handleFilterChange(index)}
+                            variant={selectedFilter.name == value.name ? "primary" : "outline"}
+                            disabled={isCapturing || savedPhoto.length != 0}
+                        >
+                            {value.name}
+                        </Button>
+                    ))}
+                </div>
+
+            </main>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+    )
 }
